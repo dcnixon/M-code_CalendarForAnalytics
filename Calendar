@@ -1,0 +1,62 @@
+/* Updated 20210127 to: 
+	Flag weekend/weekday
+	Add day of week number
+	Day of year number
+	Add Week of Month and Year
+	Age (useful for HR data, employee age for DoB, employment length from Hire Date)
+	Age Groupings (buckets for age)
+ */
+
+let
+Source = List.Dates,
+// Enter Start Date, Duration *current from start to today*, Increment *current 1 day*
+#"Invoked FunctionSource" = Source(
+ #date(1945, 1, 1), 
+ Duration.Days(DateTime.Date(DateTime.FixedLocalNow()) - #date(1945,1,1)), 
+ #duration(1, 0, 0, 0)),
+#"Table from List" = Table.FromList(#"Invoked FunctionSource", Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    #"Named Date Column" = Table.RenameColumns(#"Table from List",{{"Column1", "Date"}}),
+#"Added Index" = Table.AddIndexColumn(#"Named Date Column", "Index", 1, 1),
+#"Added Year" = Table.AddColumn(#"Added Index", "Year", each Date.Year([Date])),
+    #"Added Short Year" = Table.AddColumn(#"Added Year", "Short Year", each Text.End(Text.From([Year], "en-US"), 2), type text),
+    #"Added Month Number" = Table.AddColumn(#"Added Short Year", "Month Number", each Date.Month([Date])),
+    #"Added Month Name" = Table.AddColumn(#"Added Month Number", "Month Name", each Date.ToText([Date],"MMM")),
+#"Added Day of Month" = Table.AddColumn(#"Added Month Name", "Day of Month", each Date.Day([Date])),
+    #"Inserted Day of Year" = Table.AddColumn(#"Added Day of Month", "Day of Year", each Date.DayOfYear([Date]), Int64.Type),
+    #"Inserted Day of Week" = Table.AddColumn(#"Inserted Day of Year", "Day of Week", each Date.DayOfWeek([Date], Day.Monday), Int64.Type),
+#"Added Day Name" = Table.AddColumn(#"Inserted Day of Week", "Day Name", each Date.ToText([Date],"ddd")),
+    // Flags Sat and Sun as "Yes" for weekend
+    #"Added Weekend Flag" = Table.AddColumn(#"Added Day Name", "Weekend", each if [Day of Week] >= 5 then "Yes" else "No"),
+#"Added Quarter Number" = Table.AddColumn(#"Added Weekend Flag", "Quarter Number", each Date.QuarterOfYear([Date])),
+    #"Inserted Week of Year" = Table.AddColumn(#"Added Quarter Number", "Week of Year", each Date.WeekOfYear([Date]), Int64.Type),
+    #"Inserted Week of Month" = Table.AddColumn(#"Inserted Week of Year", "Week of Month", each Date.WeekOfMonth([Date]), Int64.Type),
+#"Added Quarter Year" = Table.AddColumn(#"Inserted Week of Month", "Quarter Year", each [Short Year] & "Q" & Number.ToText([Quarter Number],"00")),
+#"Added Age in Days" = Table.AddColumn(#"Added Quarter Year", "Age in Days", each Duration.Days(DateTime.LocalNow() - DateTime.From([Date])), type duration),
+    #"Added Short Term Age Group" = Table.AddColumn(#"Added Age in Days", "Short Term Age Group", 
+                                                    each if [Age in Days] <= 30 then "less than 1 month" 
+                                                    else if [Age in Days] <= 91 then "1 to 3 months" 
+                                                    else if [Age in Days] <= 182 then "3 to 6 months" 
+                                                    else if [Age in Days] <= 365 then "6 to 12 months" 
+                                                    else if [Age in Days] <= 1825 then "1 to 5 years" 
+                                                    else if [Age in Days] <= 3650 then "5 to 10 years" 
+                                                    else "over 10 years"),
+    #"Inserted Total Years" = Table.AddColumn(#"Added Short Term Age Group", "Total Years", each Int64.From([Age in Days] / 365), Int64.Type),
+        #"Added Long Term Age Group" = Table.AddColumn(#"Inserted Total Years", "Long Term Age Group", 
+                                                    each if [Total Years] <= 1 then "less than 1 year" 
+                                                    else if [Total Years] <= 5 then "1 to 5 years" 
+                                                    else if [Total Years] <= 10 then "5 to 10 years"
+                                                    else if [Total Years] <= 15 then "10 to 15 years" 
+                                                    else if [Total Years] <= 20 then "15 to 20 years"
+                                                    else if [Total Years] <= 20 then "15 to 20 years"
+                                                    else if [Total Years] <= 25 then "20 to 25 years"
+                                                    else if [Total Years] <= 35 then "25 to 35 years"
+                                                    else if [Total Years] <= 45 then "35 to 45 years"
+                                                    else if [Total Years] <= 55 then "45 to 55 years"
+                                                    else if [Total Years] <= 65 then "55 to 65 years"
+                                                    else "over 65 years"),
+#"Reordered Columns" = Table.ReorderColumns(#"Added Long Term Age Group",{"Date", "Index", "Year", "Short Year", "Quarter Year", "Quarter Number", "Month Number",
+                                                                     "Month Name", "Week of Year", "Week of Month", "Day Name", "Day of Year", "Day of Month",
+                                                                     "Day of Week", "Weekend", "Age in Days", "Short Term Age Group", "Total Years", "Long Term Age Group"})
+in
+    #"Reordered Columns"
+
